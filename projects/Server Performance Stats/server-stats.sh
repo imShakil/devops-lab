@@ -24,14 +24,18 @@ echo
 echo
 
 # --- Server Uptime Info ---
-print_section "SERVER UPTIME"
-print_info "Started:" "$(uptime -s)"
-printf_info "Uptime:" "$(uptime -p | sed 's/^up //')"
+print_section "SERVER INFO"
+print_info "Boot At:" "$(uptime -s)"
+print_info "Uptime:" "$(uptime -p | sed 's/^up //')"
+print_info "OS: " "$(lsb_release -d | cut -d ':' -f 2 | sed 's/^\t//')"
+print_info "load avg:" "$(uptime | awk -F 'load average: ' '{print $2}')"
+print_info "Last Logged User:" "$(last | head -n 1 | awk '{printf "%s (IP: %s)", $1, $3}')"
+print_info "Last Login Failed:" "$(lastb | head -n 1 | awk '{printf "%s (IP: %s)", $1, $3}')" # require root user
 echo
 
 # --- CPU Usage Info ---
 print_section "CPU INFO"
-print_info "Load: " "$(top -bn1 | grep "%Cpu(s)" -w | awk '{printf" %.2f%%\n", $4}')"
+print_info "CPU Usage: " "$(top -bn1 | grep "%Cpu(s)" -w | awk '{printf" %.2f%%", $4}')"
 echo
 
 # --- Disk Info ---
