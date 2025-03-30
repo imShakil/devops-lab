@@ -29,4 +29,4 @@ Cached:         1.9Gi (24.36%)
 ---
 ```
 
-This project is part of [https://roadmap.sh/projects/server-stats](https://roadmap.sh/projects/server-stats) DevOps projects.
+This project is part of: https://roadmap.sh/projects/server-stats DevOps projects.
