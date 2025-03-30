@@ -1,5 +1,3 @@
-https://roadmap.sh/projects/server-stats
-
 # Server Performance Stats
 
 A basic shell script to check server performance stats (cpu, disk, memory). This script may provide following information:
@@ -31,4 +29,4 @@ Cached:         1.9Gi (24.36%)
 ---
 ```
 
-This project is part of: https://roadmap.sh/projects/server-stats DevOps projects.
+This project is part of: [roadmap.sh](https://roadmap.sh/projects/server-stats) DevOps projects.
