@@ -1,3 +1,5 @@
+https://roadmap.sh/projects/server-stats
+
 # Server Performance Stats
 
 A basic shell script to check server performance stats (cpu, disk, memory). This script may provide following information:
