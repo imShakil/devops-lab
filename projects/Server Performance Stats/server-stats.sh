@@ -16,7 +16,7 @@ print_section() {
 print_info() {
   local key=$1
   local value=$2
-  printf "%-10s %s\n" "$key" "$value"
+  printf "%-15s %s\n" "$key" "$value"
 }
 
 
@@ -35,7 +35,7 @@ echo
 
 # --- CPU Usage Info ---
 print_section "CPU INFO"
-print_info "CPU Usage: " "$(top -bn1 | grep "%Cpu(s)" -w | awk '{printf" %.2f%%", $4}')"
+print_info "CPU Usage:" "$(top -bn1 | grep "%Cpu(s)" -w | awk '{printf "%s%%", $4}')"
 echo
 
 # --- Disk Info ---
