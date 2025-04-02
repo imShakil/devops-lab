@@ -19,7 +19,7 @@ class LogArchiver:
 
     def __init__(self):
         self.default_output_dir = os.getcwd()
-        self.filename = f'log_archives_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip'
+        self.filename = f"log_archives_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip"
     
     def archive(self, dir, verbose, output_path=None, filename=None):
         """Archive all log files from a directory into a zipfile
