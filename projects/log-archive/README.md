@@ -55,4 +55,4 @@ custom archive name: python log_archiver.py /var/log/myapp -n myapp_logs.zip
 
 ```
 
-> ref: [readmap.sg](https://roadmap.sh/projects/log-archive-tool)
+> ref: [roadmap.sh](https://roadmap.sh/projects/log-archive-tool)
