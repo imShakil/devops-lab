@@ -34,7 +34,5 @@ jobs:
               run: |
                 docker ps -a
                 docker images
-                docker tag mynix:test ${{ secrets.DOCKER_USER }}/mynix:latest
+                docker tag mynix:latest ${{ secrets.DOCKER_USER }}/mynix:latest
                 docker push ${{ secrets.DOCKER_USER }}/mynix:latest
-            
-
