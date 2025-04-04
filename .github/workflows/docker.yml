@@ -27,7 +27,8 @@ jobs:
               run: |
                 docker run -d -p 8080:80 --name mynix mynix:latest
                 sleep 5
-                curl http://localhost:8080 | grep "Hello from GitHub Actions"
+                docker ps -a
+                curl -k http://localhost:8080 | grep "Hello from GitHub Actions"
                 docker stop mynix
             - name: docker push
               run: |
