@@ -23,7 +23,9 @@ jobs:
                 username: ${{ secrets.DOCKER_USER }}
                 password: ${{ secrets.DOCKER_PASS }}
             - name: Build Image
-              run: docker build -t mynix:latest .
+              run: |
+                echo "Check Directory before build: $(pwd)"
+                docker build -t mynix:latest .
             - name: Test
               run: |
                 docker run -d -p 8080:80 --name mynix mynix:latest
@@ -33,6 +35,6 @@ jobs:
             - name: docker push
               run: |
                 docker tag mynix:test ${{ secrets.DOCKER_USER }}/mynix:latest
-                docker push ${{ secrets.DOKCER_USER }}/mynix:latest
+                docker push ${{ secrets.DOCKER_USER }}/mynix:latest
             
 
