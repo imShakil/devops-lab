@@ -4,8 +4,8 @@ pipeline {
     stage('Build') {
       steps {
         echo "Run build"
-        sh 'chmod +x build_script.sh'
-        sh './build_script.sh'
+        sh 'chmod +x projects/jenkins/build_script.sh'
+        sh './projects/jenkins/build_script.sh'
       }
     }
     stage('Test') {
