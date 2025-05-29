@@ -5,14 +5,14 @@ A simple guide to setup fail2ban action for sending an alert message to discord 
    - Go to your Discord Server → Select a channel.
    - Click Edit Channel → Integrations → Webhooks → New Webhook.
    - Name it (ex: Fail2Ban Alerts) and copy the Webhook URL.
-   - Example: https://discord.com/api/webhooks/1234567890/abcdefghijklmnopqrstuvwxyz
+   - Example: `https://discord.com/api/webhooks/1234567890/abcdefghijklmnopqrstuvwxyz`
 
 2. Create the Discord Notification Script
    - install `jq`:
      ```bash
      sudo apt install jq
      ```
-   - Create the file /usr/local/bin/fail2ban-discord.sh:
+   - Create the file `/usr/local/bin/fail2ban-discord.sh`:
       ```bash
       #!/bin/bash
       
@@ -43,7 +43,7 @@ A simple guide to setup fail2ban action for sending an alert message to discord 
       sudo chmod +x /usr/local/bin/fail2ban-discord.sh
       ```
 3. Create a Custom Fail2Ban Action
-   - Create /etc/fail2ban/action.d/discord-ban.conf:
+   - Create `/etc/fail2ban/action.d/discord-ban.conf`:
      ```ini
       [Definition]
       actionstart =
