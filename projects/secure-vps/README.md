@@ -66,13 +66,14 @@ A simple guide to setup fail2ban action for sending an alert message to discord 
       action = discord-ban
       ```
 5. Restart fail2ban
-  ```
-  sudo systemctl restart fail2ban
-  ```
+     ```
+     sudo systemctl restart fail2ban
+     ```
 
 6. Test
-  To test, you can intentionally trigger a failed login from a different IP or use:
-  ```
-  sudo fail2ban-client set sshd banip 1.2.3.4
-  ```
-  You should receive an alert in your Discord channel.
+     To test, you can intentionally trigger a failed login from a different IP or use:
+     ```
+     sudo fail2ban-client set sshd banip 1.2.3.4
+     ```
+
+All are done!. You should receive an alert in your Discord channel.
