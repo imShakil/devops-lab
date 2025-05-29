@@ -9,11 +9,11 @@ A simple guide to setup fail2ban action for sending an alert message to discord 
 
 2. Create the Discord Notification Script
    - install `jq`:
-     ```
+     ```bash
      sudo apt install jq
      ```
    - Create the file /usr/local/bin/fail2ban-discord.sh:
-      ```
+      ```bash
       #!/bin/bash
       
       JAIL="$1"
@@ -39,12 +39,12 @@ A simple guide to setup fail2ban action for sending an alert message to discord 
            "$WEBHOOK_URL"
       ```
     - Make it executable:
-      ```
+      ```bash
       sudo chmod +x /usr/local/bin/fail2ban-discord.sh
       ```
 3. Create a Custom Fail2Ban Action
    - Create /etc/fail2ban/action.d/discord-ban.conf:
-     ```
+     ```ini
       [Definition]
       actionstart =
       actionstop =
@@ -55,7 +55,7 @@ A simple guide to setup fail2ban action for sending an alert message to discord 
     
 4. Apply It in Jail Config
    - Edit /etc/fail2ban/jail.local or create if not existing:
-      ```
+      ```ini
       [sshd]
       enabled = true
       port = ssh
@@ -66,14 +66,26 @@ A simple guide to setup fail2ban action for sending an alert message to discord 
       action = discord-ban
       ```
 5. Restart fail2ban
-     ```
+     ```bash
      sudo systemctl restart fail2ban
      ```
 
 6. Test
+
      To test, you can intentionally trigger a failed login from a different IP or use:
-     ```
-     sudo fail2ban-client set sshd banip 1.2.3.4
+     ```bash
+     sudo fail2ban-client set sshd banip 192.168.0.1
      ```
 
-All are done!. You should receive an alert in your Discord channel.
+All are done!. You should receive an alert in your Discord channel like below.
+
+```text
+Fail2Ban Alert
+Server: srv627828
+Time: 2025-05-29 00:06:40
+Jail: sshd
+Banned IP: 191.7.190.74
+Reason: May 28 23:53:53 srv627828 sshd[52304]: Invalid user katarina from 191.7.190.74 port 44770
+May 28 23:53:53 srv627828 sshd[52304]: Failed password for invalid user katarina from 191.7.190.74 port 44770 ssh2
+May 29 00:06:39 srv627828 sshd[52915]: Failed password for postfix from 191.7.190.74 port 30736 ssh2
+```
