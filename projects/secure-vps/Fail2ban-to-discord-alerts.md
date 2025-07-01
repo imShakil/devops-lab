@@ -18,29 +18,39 @@ A simple guide to setup fail2ban action for sending an alert message to discord 
    - Create the file `/usr/local/bin/fail2ban-discord.sh`:
 
       ```bash
-      #!/bin/bash
-      
+      #!/usr/bin/bash
+
       JAIL="$1"
       IP="$2"
       MATCHES="$3"
       
-      WEBHOOK_URL="YOUR-WEBHOOK-URL"
+      WEBHOOK_URL="https://discord.com/api/webhooks/1304853928789278730/e3AGSi6ZqUWmX7bWUa8xmvHqes5zAn_ZQQEHBAadqTCugVnfhAzwbuNj6TZoF-vkUaRL"
+      
+      JSON="$(curl -s https://api.iplocation.net/\?ip\=$IP)"
+      COUNTRY=$(echo "$JSON" | jq -r '.country_name')
+      CC=$(echo "$JSON" | jq -r '.country_code2' | tr 'A-Z' 'a-z')
+      
+      #echo $JSON
+      #echo $COUNTRY
+      #echo $CC
       
       HOSTNAME=$(hostname)
       TIMESTAMP=$(date "+%Y-%m-%d %H:%M:%S")
       
-      MESSAGE="** Fail2Ban Alert**
-      **Server:** ${HOSTNAME}
-      **Time:** ${TIMESTAMP}
-      **Jail:** \`${JAIL}\`
-      **Banned IP:** \`${IP}\`
-      **Reason:** ${MATCHES}"
+      MESSAGE="**🚨 Fail2Ban Alert**
+      **Server:** $HOSTNAME
+      **Time:** $TIMESTAMP
+      **Jail:** \`$JAIL\`
+      **Banned IP:** \`$IP\`
+      **Attacked From:** $COUNTRY :flag_$CC:
+      **Reason:** $MATCHES"
       
-      # Send to Discord
+      
       curl -s -H "Content-Type: application/json" \
            -X POST \
            -d "$(jq -nc --arg content "$MESSAGE" '{content: $content}')" \
            "$WEBHOOK_URL"
+      
       ```
 
    - Make it executable:
@@ -87,18 +97,19 @@ A simple guide to setup fail2ban action for sending an alert message to discord 
      To test, you can intentionally trigger a failed login from a different IP or use:
 
       ```bash
-      sudo fail2ban-client set sshd banip 192.168.0.1
+      sudo fail2ban-client set sshd banip 222.65.14.143
       ```
 
-All are done!. You should receive an alert in your Discord channel like below.
-
-```text
-Fail2Ban Alert
-Server: srv627828
-Time: 2025-05-29 00:06:40
-Jail: sshd
-Banned IP: 191.7.190.74
-Reason: May 28 23:53:53 srv627828 sshd[52304]: Invalid user katarina from 191.7.190.74 port 44770
-May 28 23:53:53 srv627828 sshd[52304]: Failed password for invalid user katarina from 191.7.190.74 port 44770 ssh2
-May 29 00:06:39 srv627828 sshd[52915]: Failed password for postfix from 191.7.190.74 port 30736 ssh2
-```
+      All are done!. You should receive an alert in your Discord channel like below.
+      
+      ```text
+      🚨 Fail2Ban Alert
+      Server: srv627828
+      Time: 2025-06-30 22:36:19
+      Jail: sshd
+      Banned IP: 222.65.14.143 
+      Attacked From: China :flag_cn: 
+      Reason: Jun 30 22:36:14 srv627828 sshd[2154564]: Invalid user user from 222.65.14.143 port 17607
+      Jun 30 22:36:16 srv627828 sshd[2154566]: Invalid user user from 222.65.14.143 port 17608
+      Jun 30 22:36:17 srv627828 sshd[2154568]: Invalid user user from 222.65.14.143 port 17609
+      ```
