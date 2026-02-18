@@ -94,7 +94,7 @@ Ready-to-use automation scripts in Bash, Python, and Go for common DevOps tasks.
 2. **Want to build systems?** Jump to [System Design](system-design/README.md)  
 3. **Ready for infrastructure?** Explore [Infrastructure Provisioning](infra/README.md)
 4. **Container enthusiast?** Dive into [Containerization](containerization/README.md)
-5. **Need practical experience?** Try our [Projects](/projects/README.md)
+5. **Need practical experience?** Try our [Projects](https://github.com/imshakil/devops-lab/tree/main/projects) and [Labs](https://github.com/imshakil/devops-lab/tree/main/labs)
 
 ## 🤝 Contributing
 
