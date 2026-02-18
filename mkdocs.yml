@@ -1,0 +1,105 @@
+site_name: DevOps Lab
+site_description: A Complete Repository for DevOps Engineer - Hands-on learning with notes, labs, and mini-projects
+site_author: DevOps Lab Contributors
+site_url: https://imshakil.github.io/devops-lab
+
+repo_name: devops-lab
+repo_url: https://github.com/imshakil/devops-lab
+edit_uri: edit/main/docs/
+
+theme:
+  name: material
+  palette:
+    - scheme: default
+      primary: blue
+      accent: orange
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - scheme: slate
+      primary: blue
+      accent: orange
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - search.highlight
+    - search.share
+    - content.code.copy
+  icon:
+    repo: fontawesome/brands/github
+
+plugins:
+  - search
+  - git-revision-date-localized:
+      type: date
+
+markdown_extensions:
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - admonition
+  - pymdownx.details
+  - attr_list
+  - md_in_html
+  - toc:
+      permalink: true
+
+nav:
+  - Home: index.md
+  - Foundations:
+    - Overview: foundations/README.md
+    - Operating Systems: foundations/os/README.md
+    - Source Code Management: foundations/source-code-management/README.md
+    - SDLC: foundations/sdlc/README.md
+    - Workflows: foundations/workflows/README.md
+    - Languages: foundations/languages/README.md
+  - System Design: system-design/README.md
+  - Infrastructure:
+    - Overview: infra/README.md
+    - Terraform: infra/terraform/README.md
+    - Ansible: infra/ansible/README.md
+    - CloudFormation: infra/cloudformation/README.md
+    - Pulumi: infra/pulumi/README.md
+  - Containerization:
+    - Overview: containerization/README.md
+    - Docker: containerization/docker/README.md
+    - Kubernetes: containerization/kubernetes/README.md
+  - CI/CD:
+    - Overview: ci-cd/README.md
+    - Jenkins: ci-cd/jenkins/README.md
+    - GitHub Actions: ci-cd/github-actions/README.md
+    - GitLab CI: ci-cd/gitlab-ci/README.md
+    - Azure DevOps: ci-cd/azure-devops/README.md
+    - Circle CI: ci-cd/circle-ci/README.md
+    - GitOps: ci-cd/gitops/README.md
+  - Observability:
+    - Overview: observability/README.md
+    - Prometheus: observability/prometheus/README.md
+    - Grafana: observability/grafana/README.md
+    - ELK Stack: observability/elk-stack/README.md
+  - Interview Guides: interview-guides/README.md
+  - Scripting:
+    - Overview: scripting/README.md
+    - Bash: scripting/bash/README.md
+    - Python: scripting/python/README.md
+    - Golang: scripting/golang/README.md
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/imshakil/devops-lab
+    - icon: fontawesome/brands/linkedin
+      link: https://linkedin.com/in/imshakil
+
+copyright: Copyright &copy; 2026 || DevOps Lab Contributors
