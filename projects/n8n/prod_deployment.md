@@ -25,16 +25,11 @@ Fill every value into `.env`. Set `N8N_HOST` and `WEBHOOK_URL` to your real doma
 
 ## 3. `init-data.sh`
 
-Required by the `postgres` service to create the non-root app user. Place next to `docker-compose.yml`:
+Ships in this directory and is mounted by the `postgres` service to create the non-root user n8n connects as.
 
-```bash
-#!/bin/bash
-set -e
-psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-EOSQL
-    CREATE USER $POSTGRES_NON_ROOT_USER WITH PASSWORD '$POSTGRES_NON_ROOT_PASSWORD';
-    GRANT ALL PRIVILEGES ON DATABASE $POSTGRES_DB TO $POSTGRES_NON_ROOT_USER;
-EOSQL
-```
+It runs **only on an empty data directory**. Editing it after the first boot has no effect — see §10 if migrations already failed.
+
+Postgres 15+ revoked `CREATE` on schema `public` from `PUBLIC`, so the script also transfers schema ownership. Granting privileges on the database alone is not enough and n8n's migrations fail with `permission denied for schema public`.
 
 ## 4. Ingress (host reverse proxy)
 
@@ -105,6 +100,23 @@ docker compose exec postgres pg_isready -U $POSTGRES_USER
 | Editor UI freezes / no live updates | Host proxy missing websocket upgrade headers |
 | Cannot reach n8n from another machine | Expected — port is bound to 127.0.0.1; put a proxy in front |
 | Executions table growing unbounded | `EXECUTIONS_DATA_PRUNE` not applied — check env is actually loaded (`docker compose exec n8n env \| grep EXECUTIONS`) |
+
+### `permission denied for schema public`
+
+n8n's migrations cannot create tables. The app user has database privileges but not schema `public` rights (Postgres 15+ behaviour), usually because `init-data.sh` was missing or incomplete when the volume was first created.
+
+Since init scripts do not re-run, fix the live database:
+
+```bash
+docker compose exec -e PGPASSWORD=$POSTGRES_PASSWORD postgres \
+  psql -U $POSTGRES_USER -d $POSTGRES_DB \
+  -c "ALTER SCHEMA public OWNER TO \"$POSTGRES_NON_ROOT_USER\";" \
+  -c "GRANT ALL ON SCHEMA public TO \"$POSTGRES_NON_ROOT_USER\";"
+
+docker compose restart n8n n8n-worker
+```
+
+Alternatively, on a stack with no data worth keeping, wipe the volume so the corrected script runs from scratch: `docker compose down -v && docker compose up -d`.
 
 ## 11. Version upgrades
 

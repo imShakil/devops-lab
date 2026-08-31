@@ -1,0 +1,205 @@
+# ------------------------------------------------------------------------------------
+# PRODUCTION DOCKER COMPOSE FOR n8n (QUEUE MODE)
+# TARGET HARDWARE: 2 vCPU / 8 GB RAM
+# ------------------------------------------------------------------------------------
+#
+# PHILOSOPHY:
+# 1. QUEUE MODE: With 2 vCPUs and 8 GB RAM, we can afford the overhead of queue mode.
+#    This architecture provides superior performance and stability by separating tasks:
+#      - n8n-main: Handles only the UI, API, and webhooks, ensuring a responsive interface.
+#      - n8n-worker: A dedicated container that does the heavy lifting of executing workflows.
+#      - Redis: A lightweight message broker that manages the queue between main and worker.
+#      - task-runners: External sidecar container for secure Code node execution.
+# 2. DEDICATED RESOURCES: Resources are strategically allocated. The database and the
+#    worker get the largest shares of CPU and RAM, as they are the most critical
+#    components for performance.
+# 3. CONTROLLED CONCURRENCY: The worker is configured with moderate concurrency to process
+#    workflows efficiently while maintaining stability on dual-core systems.
+#
+
+services:
+  # ---------------------------------------------------------------
+  # PostgreSQL Database Service
+  # ---------------------------------------------------------------
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    # CRITICAL OPTIMIZATION: A higher connection limit is essential for queue mode
+    # to support the connection pool used by the high-concurrency worker.
+    command: postgres -c 'max_connections=200'
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      start_period: 30s
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    # --- RESOURCE ALLOCATION ---
+    # The database is given a high priority for resources.
+    deploy:
+      resources:
+        limits:
+          cpus: "0.7" # Guarantees 0.7 CPU cores for database operations.
+          memory: 3G  # Allocates 3 GB of RAM for caching and performance.
+
+  # ---------------------------------------------------------------
+  # Redis Message Broker Service
+  # ---------------------------------------------------------------
+  redis:
+    image: redis:8-alpine
+    restart: unless-stopped
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    # --- RESOURCE ALLOCATION ---
+    # Redis is extremely lightweight and requires minimal resources.
+    deploy:
+      resources:
+        limits:
+          cpus: "0.2"  # 20% of a CPU core is more than enough.
+          memory: 512M # 512 MB is ample memory for the job queue.
+
+  # ---------------------------------------------------------------
+  # N8N Main Instance (UI, Webhooks, API)
+  # ---------------------------------------------------------------
+  n8n-main:
+    # IMPORTANT: Pinning to a specific version is crucial for production stability.
+    image: n8nio/n8n:1.117.3
+    restart: unless-stopped
+    # The main instance handles the UI and queues jobs. It depends on both Postgres and Redis.
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    ports:
+      - "${N8N_PORT:-5678}:5678"
+    environment:
+      # --- Execution Mode ---
+      # 'queue' mode offloads all executions to dedicated workers.
+      - EXECUTIONS_PROCESS=queue
+
+      # --- Database & Redis Connection ---
+      - DB_TYPE=postgresdb
+      - DB_POSTGRESDB_HOST=postgres
+      - DB_POSTGRESDB_PORT=5432
+      - DB_POSTGRESDB_DATABASE=${POSTGRES_DB}
+      - DB_POSTGRESDB_USER=${POSTGRES_USER}
+      - DB_POSTGRESDB_PASSWORD=${POSTGRES_PASSWORD}
+      - QUEUE_BULL_REDIS_HOST=redis             # Tells n8n where to find the Redis queue.
+
+      # --- Security & Encryption ---
+      - N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY}
+      - N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS=true
+      - N8N_SECURE_COOKIE=true
+      - N8N_BLOCK_ENV_ACCESS_IN_NODE=false
+      - N8N_GIT_NODE_DISABLE_BARE_REPOS=true
+
+      # --- Host, Network & Timezone Settings ---
+      - N8N_HOST=${N8N_HOST}
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=https
+      - NODE_ENV=production
+      - WEBHOOK_URL=https://${N8N_HOST}/
+      - GENERIC_TIMEZONE=${GENERIC_TIMEZONE}
+
+      # --- Reverse Proxy Configuration ---
+      - N8N_TRUST_PROXY=true
+      - N8N_PROXY_HOPS=1
+
+      # --- Data Pruning & Features ---
+      - EXECUTIONS_DATA_PRUNE=true
+      - EXECUTIONS_DATA_MAX_AGE=168
+      - N8N_PERSONALIZATION_ENABLED=false
+      - N8N_TEMPLATES_ENABLED=true
+
+      # --- Task Runners (External Mode) ---
+      - N8N_RUNNERS_ENABLED=true
+      - N8N_RUNNERS_MODE=external
+      - N8N_RUNNERS_BROKER_LISTEN_ADDRESS=0.0.0.0
+      - N8N_RUNNERS_AUTH_TOKEN=${N8N_RUNNERS_AUTH_TOKEN}
+
+    volumes:
+      - n8n_data:/home/node/.n8n
+    # --- RESOURCE ALLOCATION ---
+    # The main instance is less resource-intensive in queue mode.
+    deploy:
+      resources:
+        limits:
+          cpus: "0.4"  # 0.4 CPU cores for managing the UI and API.
+          memory: 1.5G # 1.5 GB provides a smooth and responsive user experience.
+
+  # ---------------------------------------------------------------
+  # N8N Worker Instance (Executes Workflows)
+  # ---------------------------------------------------------------
+  n8n-worker:
+    # The worker image version MUST exactly match the main instance version.
+    image: n8nio/n8n:1.117.3
+    restart: unless-stopped
+    # This command starts the container in 'worker' mode.
+    # --concurrency=8 tells this single worker to handle up to 8 jobs in parallel.
+    # Reduced from 10 for better stability on 2 vCPU systems.
+    command: worker --concurrency=8
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    environment:
+      # --- Execution Mode ---
+      - EXECUTIONS_PROCESS=queue
+      # --- Database & Redis Connection (same as main) ---
+      - DB_TYPE=postgresdb
+      - DB_POSTGRESDB_HOST=postgres
+      - DB_POSTGRESDB_PORT=5432
+      - DB_POSTGRESDB_DATABASE=${POSTGRES_DB}
+      - DB_POSTGRESDB_USER=${POSTGRES_USER}
+      - DB_POSTGRESDB_PASSWORD=${POSTGRES_PASSWORD}
+      - QUEUE_BULL_REDIS_HOST=redis
+      # --- Security ---
+      # The worker MUST use the exact same encryption key to decrypt credentials.
+      - N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY}
+      - GENERIC_TIMEZONE=${GENERIC_TIMEZONE}
+    # The worker shares the same volume to access workflow and credential data.
+    volumes:
+      - n8n_data:/home/node/.n8n
+    # --- RESOURCE ALLOCATION ---
+    # The worker does the heavy lifting and gets a larger share of resources.
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"  # 0.5 CPU cores for workflow executions.
+          memory: 2.5G # Allocate 2.5 GB for workflows. Adjust if you have memory-heavy nodes.
+
+  # ---------------------------------------------------------------
+  # Task Runners (External Mode - Sidecar)
+  # ---------------------------------------------------------------
+  task-runners:
+    # The runners image version MUST exactly match the n8n version.
+    image: n8nio/runners:1.117.3
+    restart: unless-stopped
+    depends_on:
+      - n8n-main
+    environment:
+      # --- Task Runner Configuration ---
+      - N8N_RUNNERS_TASK_BROKER_URI=http://n8n-main:5679
+      - N8N_RUNNERS_AUTH_TOKEN=${N8N_RUNNERS_AUTH_TOKEN}
+      - N8N_RUNNERS_AUTO_SHUTDOWN_TIMEOUT=15
+    # --- RESOURCE ALLOCATION ---
+    # Task runners are lightweight and need minimal resources.
+    deploy:
+      resources:
+        limits:
+          cpus: "0.2"
+          memory: 512M
+
+# Named volumes are essential for persisting all your data.
+volumes:
+  n8n_data:
+  postgres_data:
+  redis_data:
