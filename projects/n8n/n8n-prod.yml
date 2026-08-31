@@ -4,13 +4,16 @@
 #   POSTGRES_NON_ROOT_USER, POSTGRES_NON_ROOT_PASSWORD
 #   REDIS_PASSWORD
 #   N8N_ENCRYPTION_KEY        (generate once, back up separately — losing it makes stored credentials unrecoverable)
-#   N8N_RUNNERS_AUTH_TOKEN    (shared secret between n8n <-> runner sidecars)
-#   N8N_HOST, WEBHOOK_URL
+#   N8N_RUNNERS_AUTH_TOKEN    (shared secret between n8n-worker <-> n8n-worker-runner)
+#   N8N_HOST, WEBHOOK_URL     (public hostname / URL; TLS terminates on the host reverse proxy)
 #   N8N_SMTP_* (if email notifications needed)
+#
+# Ingress: n8n is bound to 127.0.0.1:5678 (HTTP). Put Caddy/nginx/Traefik on the
+# host in front for public HTTPS. Local editor: http://127.0.0.1:5678
 # ─────────────────────────────────────────────────────────────
 
-x-n8n-image: &n8n-image n8nio/n8n:1.113.1
-x-runner-image: &runner-image n8nio/runners:1.113.1   # MUST match n8n version exactly
+x-n8n-image: &n8n-image n8nio/n8n:2.37.6
+x-runner-image: &runner-image n8nio/runners:2.37.6   # MUST match n8n version exactly
 
 x-n8n-common-env: &n8n-common-env
   # Database
@@ -33,10 +36,9 @@ x-n8n-common-env: &n8n-common-env
   GENERIC_TIMEZONE: ${TIMEZONE:-UTC}
   TZ: ${TIMEZONE:-UTC}
 
-  # Task runners (mandatory as of n8n 2.0 — sandboxes Code node execution)
+  # Task runners — Code nodes run on the worker, not main
   N8N_RUNNERS_MODE: external
   N8N_RUNNERS_AUTH_TOKEN: ${N8N_RUNNERS_AUTH_TOKEN}
-  N8N_RUNNERS_BROKER_LISTEN_ADDRESS: 0.0.0.0
   OFFLOAD_MANUAL_EXECUTIONS_TO_WORKERS: "true"
 
   # Execution data hygiene — without this the executions table grows unbounded
@@ -50,7 +52,7 @@ x-n8n-common-env: &n8n-common-env
   N8N_DIAGNOSTICS_ENABLED: "false"
   N8N_PERSONALIZATION_ENABLED: "false"
   N8N_HIRING_BANNER_ENABLED: "false"
-  N8N_METRICS: "true"                   # keep true only if you scrape it (Prometheus); else set false
+  N8N_METRICS: ${N8N_METRICS:-false}
 
   # Logging
   N8N_LOG_LEVEL: ${N8N_LOG_LEVEL:-info}
@@ -80,12 +82,12 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "2"
-          memory: 2G
+          cpus: "0.5"
+          memory: 1G
 
   # ── Redis ────────────────────────────────────────────────────
   redis:
-    image: redis:7-alpine
+    image: redis:8-alpine
     restart: unless-stopped
     command: redis-server --requirepass ${REDIS_PASSWORD} --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
     volumes:
@@ -100,8 +102,8 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "1"
-          memory: 768M
+          cpus: "0.5"
+          memory: 512M
 
   # ── n8n Main (UI, webhooks, trigger management) ─────────────
   n8n:
@@ -112,22 +114,26 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    ports:
+      - "127.0.0.1:5678:5678"   # HTTP on loopback only — TLS belongs on the host proxy
     environment:
       <<: *n8n-common-env
       N8N_HOST: ${N8N_HOST:-localhost}
       N8N_PORT: 5678
-      N8N_PROTOCOL: https
+      N8N_PROTOCOL: ${N8N_PROTOCOL:-https}
       WEBHOOK_URL: ${WEBHOOK_URL}
-      N8N_SMTP_HOST: ${N8N_SMTP_HOST}
+      NODE_ENV: production
+      N8N_TRUST_PROXY: true
+      N8N_PROXY_HOPS: 1
+      N8N_SMTP_HOST: ${N8N_SMTP_HOST:-}
       N8N_SMTP_PORT: ${N8N_SMTP_PORT:-587}
-      N8N_SMTP_USER: ${N8N_SMTP_USER}
-      N8N_SMTP_PASS: ${N8N_SMTP_PASS}
-      N8N_SMTP_SENDER: ${N8N_SMTP_SENDER}
+      N8N_SMTP_USER: ${N8N_SMTP_USER:-}
+      N8N_SMTP_PASS: ${N8N_SMTP_PASS:-}
+      N8N_SMTP_SENDER: ${N8N_SMTP_SENDER:-}
     volumes:
       - n8n_data:/home/node/.n8n
     networks:
       - backend
-      - frontend
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:5678/healthz"]
       interval: 30s
@@ -136,26 +142,9 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "2"
-          memory: 2G
-    # No published ports — nginx is the sole ingress point
-
-  n8n-main-runner:
-    image: *runner-image
-    restart: unless-stopped
-    depends_on:
-      - n8n
-    environment:
-      N8N_RUNNERS_TASK_BROKER_URI: http://n8n:5679
-      N8N_RUNNERS_AUTH_TOKEN: ${N8N_RUNNERS_AUTH_TOKEN}
-      N8N_RUNNERS_MAX_OLD_SPACE_SIZE: 1024
-    networks:
-      - backend
-    deploy:
-      resources:
-        limits:
           cpus: "1"
-          memory: 1G
+          memory: 1.5G
+    # No runner sidecar: OFFLOAD_MANUAL_EXECUTIONS_TO_WORKERS means main never executes Code nodes
 
   # ── n8n Worker (queue processing) ───────────────────────────
   n8n-worker:
@@ -166,22 +155,22 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-    command: worker --concurrency=10
+    command: worker --concurrency=6
     environment:
       <<: *n8n-common-env
-      N8N_RUNNERS_TASK_BROKER_URI: http://localhost:5679
+      N8N_RUNNERS_BROKER_LISTEN_ADDRESS: 0.0.0.0
     volumes:
       - n8n_data:/home/node/.n8n
     networks:
       - backend
     deploy:
-      replicas: ${N8N_WORKER_REPLICAS:-2}
       resources:
         limits:
           cpus: "2"
           memory: 2G
-    # NOTE: no container_name here — required for replicas to scale
 
+  # Sidecar for Code nodes — attaches to the worker's broker (:5679), not main.
+  # One runner per worker. Do not scale this service independently.
   n8n-worker-runner:
     image: *runner-image
     restart: unless-stopped
@@ -194,37 +183,10 @@ services:
     networks:
       - backend
     deploy:
-      replicas: ${N8N_WORKER_REPLICAS:-2}   # match worker replica count 1:1
       resources:
         limits:
           cpus: "1"
           memory: 1G
-
-  # ── Nginx Reverse Proxy (sole internet-facing entrypoint) ───
-  nginx:
-    image: nginx:alpine
-    restart: unless-stopped
-    depends_on:
-      - n8n
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./nginx/ssl:/etc/nginx/ssl:ro
-      - nginx_logs:/var/log/nginx
-    networks:
-      - frontend
-    healthcheck:
-      test: ["CMD", "nginx", "-t"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-    deploy:
-      resources:
-        limits:
-          cpus: "1"
-          memory: 256M
 
 volumes:
   postgres_data:
@@ -233,12 +195,8 @@ volumes:
     driver: local
   n8n_data:
     driver: local
-  nginx_logs:
-    driver: local
 
 networks:
   backend:
     driver: bridge
-    internal: true    # postgres/redis/n8n/workers unreachable from outside the docker host
-  frontend:
-    driver: bridge
+    internal: true    # postgres/redis/workers unreachable except via published n8n port

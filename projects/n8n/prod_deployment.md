@@ -1,15 +1,15 @@
 # n8n Production Deployment Guide
 
-Stack: Postgres 16 + Redis 7 + n8n (queue mode, main + workers) + task runner sidecars + Nginx.
+Stack: Postgres 16 + Redis 8 + n8n (queue mode, main + one worker) + task runner sidecar. TLS is not in Compose — bind is `127.0.0.1:5678`.
 
 ## 1. Prerequisites
 
 | Requirement | Notes |
-|---|---|
+| --- | --- |
 | Docker Engine | 24+ |
-| Docker Compose | v2 (`docker compose`, not `docker-compose`) — needed for `deploy.replicas` support outside Swarm |
-| Domain + DNS | A record pointing at the host, for `N8N_HOST` |
-| TLS certs | Not automated in this stack — see §6 |
+| Docker Compose | v2 (`docker compose`, not `docker-compose`) |
+| Domain + DNS | A record pointing at the host, for `N8N_HOST` (only if exposing publicly) |
+| Host reverse proxy | Caddy / nginx / Traefik on the host for HTTPS → `http://127.0.0.1:5678` |
 
 ## 2. First-time setup
 
@@ -36,13 +36,21 @@ psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-E
 EOSQL
 ```
 
-## 4. Nginx config
+## 4. Ingress (host reverse proxy)
 
-Not included in this repo — you'll need `nginx/nginx.conf` and certs under `nginx/ssl/`. Minimum requirements for the upstream block:
+n8n listens on **HTTP** `127.0.0.1:5678` only. It is not reachable from other machines unless you proxy it.
 
-- `proxy_pass http://n8n:5678;`
-- Websocket upgrade headers (`Upgrade`/`Connection`) — n8n's editor UI relies on this for live updates
-- `client_max_body_size` raised if you handle large binary data / file uploads
+Local editor: `http://127.0.0.1:5678`
+
+Public access: terminate TLS on the host and proxy to `http://127.0.0.1:5678`. The proxy must:
+
+- Upgrade websockets (`Upgrade` / `Connection`) — the editor UI needs this
+- Raise `client_max_body_size` / equivalent if you upload large files
+- Forward `Host` and `X-Forwarded-*` (Compose already sets `N8N_TRUST_PROXY` / `N8N_PROXY_HOPS=1`)
+
+Set `N8N_PROTOCOL=https` and `WEBHOOK_URL=https://<N8N_HOST>/` to the **public** URL, not localhost.
+
+Local-only (no proxy): `N8N_PROTOCOL=http` and `WEBHOOK_URL=http://127.0.0.1:5678/`.
 
 ## 5. Start the stack
 
@@ -52,31 +60,27 @@ docker compose ps                 # all services should report healthy
 docker compose logs -f n8n        # watch main app boot
 ```
 
-First boot creates an owner account at `https://<N8N_HOST>/setup`.
+First boot creates an owner account at `http://127.0.0.1:5678/setup` (or `https://<N8N_HOST>/setup` once the host proxy is up).
 
 ## 6. TLS certificates
 
-Two common options — pick one, neither is wired up automatically:
+TLS is a host concern, not this Compose file. Typical options:
 
 | Option | Approach |
-|---|---|
-| Certbot sidecar | Add a `certbot` service + webroot volume shared with nginx, cron renewal via `docker compose run` |
-| External reverse proxy | Put Traefik/Caddy in front instead of raw nginx if you want auto-renewal built in |
+| --- | --- |
+| Caddy / Traefik on the host | Auto-HTTPS, reverse proxy to `127.0.0.1:5678` |
+| Host nginx + Certbot | Same upstream; websocket headers required |
 
 ## 7. Scaling workers
 
-```bash
-# edit .env
-N8N_WORKER_REPLICAS=4
-docker compose up -d --scale n8n-worker=4 --scale n8n-worker-runner=4
-```
+Do not use Compose `replicas` or `--scale` for `n8n-worker` / `n8n-worker-runner`. The runner connects to `http://n8n-worker:5679`; with multiple replicas Compose DNS round-robins, so Code nodes can hit a worker that has no runner attached.
 
-Keep `n8n-worker` and `n8n-worker-runner` replica counts equal — each worker needs its own runner for Code node execution.
+This stack is one worker + one runner. Raise throughput with `worker --concurrency=…` first. Extra workers need separately named services, each with its own runner pointing at that service hostname.
 
 ## 8. Backups
 
 | Data | Method | Frequency |
-|---|---|---|
+| --- | --- | --- |
 | Postgres (workflows, credentials, executions) | `docker compose exec postgres pg_dump -U $POSTGRES_NON_ROOT_USER $POSTGRES_DB > backup.sql`, ship offsite (S3/rsync) | Daily |
 | `n8n_data` volume (binary data, community nodes) | Volume snapshot or `tar` | Weekly |
 | `N8N_ENCRYPTION_KEY` | Secrets vault, separate from above | Once, verify yearly |
@@ -87,7 +91,7 @@ Restoring credentials requires the **same** `N8N_ENCRYPTION_KEY` that encrypted 
 
 ```bash
 docker compose ps                                  # container-level health
-curl -f https://<N8N_HOST>/healthz                  # app-level
+curl -f http://127.0.0.1:5678/healthz               # app-level (or https://<N8N_HOST>/healthz via proxy)
 docker compose exec redis redis-cli -a $REDIS_PASSWORD ping
 docker compose exec postgres pg_isready -U $POSTGRES_USER
 ```
@@ -95,11 +99,11 @@ docker compose exec postgres pg_isready -U $POSTGRES_USER
 ## 10. Common issues
 
 | Symptom | Likely cause |
-|---|---|
+| --- | --- |
 | Workers not picking up jobs | `QUEUE_BULL_REDIS_PASSWORD` mismatch between `n8n` and `n8n-worker`, or Redis not healthy yet |
 | Code node executions fail with runner errors | Runner image tag doesn't match n8n image tag exactly, or `N8N_RUNNERS_AUTH_TOKEN` mismatch |
-| `n8n-worker` won't scale past 1 | Leftover `container_name` on the service — must be absent for `replicas` to work |
-| Editor UI freezes / no live updates | Nginx missing websocket upgrade headers |
+| Editor UI freezes / no live updates | Host proxy missing websocket upgrade headers |
+| Cannot reach n8n from another machine | Expected — port is bound to 127.0.0.1; put a proxy in front |
 | Executions table growing unbounded | `EXECUTIONS_DATA_PRUNE` not applied — check env is actually loaded (`docker compose exec n8n env \| grep EXECUTIONS`) |
 
 ## 11. Version upgrades
